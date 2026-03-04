@@ -1,31 +1,42 @@
-from pathlib import Path
 import os
-
-import yaml
 
 
 class ConfigError(Exception):
     pass
 
 
-_DEFAULT_PATH = Path("user/config.yaml")
+def load_config() -> dict:
+    """Load config from environment variables.
 
+    Required env vars:
+        TELEGRAM_TOKEN      — Bot token from @BotFather
+        TELEGRAM_USER_IDS   — Comma-separated allowed user IDs
+    """
+    token = os.environ.get("TELEGRAM_TOKEN", "").strip()
+    user_ids_raw = os.environ.get("TELEGRAM_USER_IDS", "").strip()
 
-def load_config(path: Path | None = None) -> dict:
-    if path is None:
-        env = os.environ.get("LOBSTERBOT_CONFIG")
-        path = Path(env) if env else _DEFAULT_PATH
+    if not token:
+        raise ConfigError(
+            "TELEGRAM_TOKEN environment variable is required. "
+            "Get one from @BotFather on Telegram."
+        )
+    if not user_ids_raw:
+        raise ConfigError(
+            "TELEGRAM_USER_IDS environment variable is required. "
+            "Get your ID from @userinfobot on Telegram."
+        )
 
-    if not path.exists():
-        raise ConfigError(f"Config file not found: {path}")
+    try:
+        allowed_users = [int(uid.strip()) for uid in user_ids_raw.split(",") if uid.strip()]
+    except ValueError:
+        raise ConfigError("TELEGRAM_USER_IDS must be comma-separated integers")
 
-    with open(path) as f:
-        cfg = yaml.safe_load(f)
+    if not allowed_users:
+        raise ConfigError("TELEGRAM_USER_IDS must contain at least one user ID")
 
-    tg = cfg.get("telegram", {})
-    if not tg.get("token"):
-        raise ConfigError("telegram.token is required in config")
-    if not tg.get("allowed_users"):
-        raise ConfigError("telegram.allowed_users is required in config")
-
-    return cfg
+    return {
+        "telegram": {
+            "token": token,
+            "allowed_users": allowed_users,
+        }
+    }

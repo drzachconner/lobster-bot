@@ -1,11 +1,12 @@
 [Unit]
-Description=Lobsterbot Telegram Bot
+Description=lobster-bot Telegram Assistant
 After=network.target
 
 [Service]
 Type=simple
-User=USER
-WorkingDirectory=/home/USER/lobsterbot
+User=root
+WorkingDirectory=/root/lobster-bot
+EnvironmentFile=/root/lobster-bot/.env
 ExecStart=/usr/bin/python3 run.py
 Restart=always
 RestartSec=10

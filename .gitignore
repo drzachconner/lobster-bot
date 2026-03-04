@@ -8,8 +8,10 @@ build/
 .venv/
 venv/
 
-# Runtime data — created when bot runs
-user/
+# Secrets
+.env
+
+# Runtime (recreated on startup)
 *.db
 *.lock
 .claude_lock
@@ -17,9 +19,8 @@ user/
 # Memory — keep structure, ignore runtime content
 memory/daily/*.md
 memory/chats/*.md
-!memory/facts.md
 
-# Temp files from media processing
+# Temp files
 /tmp/
 lobsterbot_*/
 

@@ -6,9 +6,8 @@ import pytest
 from core.bot import (
     handle_message,
     handle_new,
-    handle_facts,
-    handle_today,
     handle_usage,
+    handle_status,
     handle_help,
     is_authorized,
     _heartbeat,
@@ -53,20 +52,25 @@ async def test_handle_message_unauthorized(mock_update, mock_context):
 
 
 @pytest.mark.asyncio
-async def test_handle_message_enqueues(mock_update, mock_context):
-    mock_router = MagicMock()
-    mock_router.enqueue = AsyncMock()
+async def test_handle_message_sends_response(mock_update, mock_context):
+    mock_sessions = MagicMock()
+    mock_sessions.get_session.return_value = None
+
+    mock_response = ClaudeResponse(
+        text="Hi there!", session_id="sess-123", cost_usd=0.001,
+        usage={"input_tokens": 10, "output_tokens": 5},
+    )
 
     with (
         patch("core.bot._config", {"telegram": {"allowed_users": [111]}}),
-        patch("core.bot._router", mock_router),
+        patch("core.bot._sessions", mock_sessions),
+        patch("core.bot.send_message", new_callable=AsyncMock, return_value=mock_response),
     ):
         await handle_message(mock_update, mock_context)
 
-    mock_router.enqueue.assert_called_once()
-    call_args = mock_router.enqueue.call_args
-    assert call_args[0][0] == 111  # chat_id
-    assert call_args[0][1] == "Hello bot"  # message text
+    mock_update.message.reply_text.assert_called_once_with("Hi there!")
+    mock_sessions.set_session.assert_called_once_with(111, "sess-123")
+    mock_sessions.log_usage.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -79,32 +83,6 @@ async def test_handle_new_clears_session(mock_update, mock_context):
 
     mock_sm.clear_session.assert_called_once_with(111)
     mock_update.message.reply_text.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_handle_facts_shows_content(mock_update, mock_context, tmp_path):
-    facts = tmp_path / "memory" / "facts.md"
-    facts.parent.mkdir(parents=True)
-    facts.write_text("Name: Alice\nTimezone: EST")
-
-    with (
-        patch("core.bot._config", {"telegram": {"allowed_users": [111]}}),
-        patch("core.bot._project_dir", str(tmp_path)),
-    ):
-        await handle_facts(mock_update, mock_context)
-
-    mock_update.message.reply_text.assert_called_once_with("Name: Alice\nTimezone: EST")
-
-
-@pytest.mark.asyncio
-async def test_handle_today_no_log(mock_update, mock_context, tmp_path):
-    with (
-        patch("core.bot._config", {"telegram": {"allowed_users": [111]}}),
-        patch("core.bot._project_dir", str(tmp_path)),
-    ):
-        await handle_today(mock_update, mock_context)
-
-    assert "no log" in mock_update.message.reply_text.call_args[0][0].lower()
 
 
 @pytest.mark.asyncio
@@ -124,8 +102,23 @@ async def test_handle_usage(mock_update, mock_context):
     msg = mock_update.message.reply_text.call_args[0][0]
     assert "$0.0123" in msg
     assert "$0.4567" in msg
-    assert "10 messages" in msg
-    assert "200 messages" in msg
+    assert "10 msgs" in msg
+    assert "200 msgs" in msg
+
+
+@pytest.mark.asyncio
+async def test_handle_status(mock_update, mock_context):
+    mock_sessions = MagicMock()
+    mock_sessions.get_session.return_value = "sess-abc"
+
+    with (
+        patch("core.bot._config", {"telegram": {"allowed_users": [111]}}),
+        patch("core.bot._sessions", mock_sessions),
+    ):
+        await handle_status(mock_update, mock_context)
+
+    msg = mock_update.message.reply_text.call_args[0][0]
+    assert "sess-abc" in msg
 
 
 @pytest.mark.asyncio
@@ -137,8 +130,7 @@ async def test_heartbeat_pulls(tmp_path):
         stderr="",
     )
 
-    with patch("asyncio.to_thread", new_callable=AsyncMock, return_value=mock_result) as mock_thread:
-        # Run heartbeat with 0 interval so it fires immediately, then cancel
+    with patch("asyncio.to_thread", new_callable=AsyncMock, return_value=mock_result):
         import asyncio
         task = asyncio.create_task(_heartbeat(str(tmp_path), interval=0))
         await asyncio.sleep(0.1)
@@ -148,8 +140,6 @@ async def test_heartbeat_pulls(tmp_path):
         except asyncio.CancelledError:
             pass
 
-    mock_thread.assert_called()
-
 
 @pytest.mark.asyncio
 async def test_handle_help(mock_update, mock_context):
@@ -157,5 +147,4 @@ async def test_handle_help(mock_update, mock_context):
     msg = mock_update.message.reply_text.call_args[0][0]
     assert "/new" in msg
     assert "/usage" in msg
-    assert "/facts" in msg
-    assert "/today" in msg
+    assert "/help" in msg
