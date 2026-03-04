@@ -1,3 +1,4 @@
+import subprocess
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
@@ -10,6 +11,7 @@ from core.bot import (
     handle_usage,
     handle_help,
     is_authorized,
+    _heartbeat,
 )
 from core.bridge import ClaudeResponse
 
@@ -124,6 +126,29 @@ async def test_handle_usage(mock_update, mock_context):
     assert "$0.4567" in msg
     assert "10 messages" in msg
     assert "200 messages" in msg
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_pulls(tmp_path):
+    mock_result = subprocess.CompletedProcess(
+        args=["git", "pull", "--ff-only"],
+        returncode=0,
+        stdout="Updating abc..def\nFast-forward\n",
+        stderr="",
+    )
+
+    with patch("asyncio.to_thread", new_callable=AsyncMock, return_value=mock_result) as mock_thread:
+        # Run heartbeat with 0 interval so it fires immediately, then cancel
+        import asyncio
+        task = asyncio.create_task(_heartbeat(str(tmp_path), interval=0))
+        await asyncio.sleep(0.1)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    mock_thread.assert_called()
 
 
 @pytest.mark.asyncio

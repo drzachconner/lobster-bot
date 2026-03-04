@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import shutil
+import subprocess
 from pathlib import Path
 
 from telegram import Update
@@ -244,6 +246,27 @@ async def handle_help(update: Update, context) -> None:
     )
 
 
+async def _heartbeat(project_dir: str, interval: int = 300) -> None:
+    """Periodically pull upstream changes. Runs every `interval` seconds (default 5 min)."""
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                ["git", "pull", "--ff-only"],
+                cwd=project_dir,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0 and "Already up to date" not in result.stdout:
+                logger.info("Heartbeat: pulled updates — %s", result.stdout.strip())
+            elif result.returncode != 0:
+                logger.warning("Heartbeat: git pull failed — %s", result.stderr.strip())
+        except Exception:
+            logger.exception("Heartbeat: pull failed")
+
+
 def _setup_data_dir(source_dir: Path, data_dir: Path) -> None:
     """Copy Claude config files into a separate data directory."""
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -285,6 +308,12 @@ def main(data_dir: str | None = None):
         (Path(_project_dir) / "memory" / subdir).mkdir(parents=True, exist_ok=True)
 
     app = Application.builder().token(_config["telegram"]["token"]).build()
+
+    # Start heartbeat (auto-pull upstream every 5 min)
+    async def post_init(application):
+        application.create_task(_heartbeat(_project_dir))
+
+    app.post_init = post_init
 
     # Commands
     app.add_handler(CommandHandler("new", handle_new))
