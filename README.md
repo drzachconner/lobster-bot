@@ -1,8 +1,8 @@
-# lobster-bot
+# 🦞 lobster-bot
 
-A personal AI assistant on Telegram, powered by Claude Code.
+Your personal AI assistant on Telegram, powered by Claude Code.
 
-Clone it, set two env vars, and you have a 24/7 AI assistant that can search the web, remember things about you, and run on a schedule.
+Clone it, set two env vars, and you've got a 24/7 assistant that can browse the web, remember things about you, and hold real conversations — all from your phone.
 
 ## Quick Start
 
@@ -106,13 +106,15 @@ cd ~/lobster-bot && git pull && systemctl restart lobster-bot
 ## How It Works
 
 ```
-Telegram message → python-telegram-bot → claude -p --output-format json → Telegram response
+You on Telegram → python-telegram-bot → Claude Code (claude -p) → back to you
 ```
 
-- Messages are sent to Claude Code via subprocess (`claude -p`)
-- SQLite tracks sessions (conversation continuity) and usage (cost/tokens)
-- The bot auto-pulls updates from git every 5 minutes
-- `.claude/settings.json` enforces a security boundary on what Claude can do
+It's a thin bridge between Telegram and Claude Code. Your messages go in, Claude thinks, and the response comes back. That's it.
+
+- **Sessions persist** — Claude remembers your conversation context
+- **Web browsing built in** — Playwright MCP lets it navigate real websites
+- **Usage tracking** — know exactly what you're spending
+- **Auto-updates** — pulls from git every 5 minutes so you can push changes and they go live
 
 ## Project Structure
 
