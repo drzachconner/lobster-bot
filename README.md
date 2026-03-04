@@ -58,6 +58,10 @@ Create `/root/lobster-bot/.env` with your token and user ID. That's it.
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 - Node.js (for web browsing)
 
+---
+
+If this is useful to you, a ⭐ on the repo goes a long way.
+
 ## License
 
 MIT
