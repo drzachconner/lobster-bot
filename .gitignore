@@ -15,6 +15,7 @@ venv/
 *.db
 *.lock
 .claude_lock
+media/
 
 # Memory — keep structure, ignore runtime content
 memory/daily/*.md

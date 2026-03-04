@@ -17,7 +17,9 @@
       "Bash(tail*)",
       "Bash(wc*)",
       "Bash(echo*)",
-      "Bash(npx*)"
+      "Bash(npx*)",
+      "Bash(rm ./media/*)",
+      "Bash(rm -r ./media/*)"
     ],
     "deny": [
       "Write(./core/**)",
