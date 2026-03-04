@@ -2,7 +2,14 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
-from core.bot import handle_message, handle_new, is_authorized
+from core.bot import (
+    handle_message,
+    handle_new,
+    handle_facts,
+    handle_today,
+    handle_help,
+    is_authorized,
+)
 from core.bridge import ClaudeResponse
 
 
@@ -21,6 +28,7 @@ def mock_update():
 def mock_context():
     ctx = MagicMock()
     ctx.bot.send_message = AsyncMock()
+    ctx.bot.send_chat_action = AsyncMock()
     return ctx
 
 
@@ -42,36 +50,20 @@ async def test_handle_message_unauthorized(mock_update, mock_context):
 
 
 @pytest.mark.asyncio
-async def test_handle_message_success(mock_update, mock_context):
-    mock_response = ClaudeResponse(text="Hi there!", session_id="sess-1")
+async def test_handle_message_enqueues(mock_update, mock_context):
+    mock_router = MagicMock()
+    mock_router.enqueue = AsyncMock()
 
     with (
         patch("core.bot._config", {"telegram": {"allowed_users": [111]}}),
-        patch("core.bot._sessions") as mock_sm,
-        patch("core.bot.send_message", new_callable=AsyncMock, return_value=mock_response),
-        patch("core.bot._project_dir", "/tmp/bot"),
+        patch("core.bot._router", mock_router),
     ):
-        mock_sm.get_session.return_value = None
         await handle_message(mock_update, mock_context)
 
-    mock_update.message.reply_text.assert_called_once_with("Hi there!")
-    mock_sm.set_session.assert_called_once_with(111, "sess-1")
-
-
-@pytest.mark.asyncio
-async def test_handle_message_resumes_session(mock_update, mock_context):
-    mock_response = ClaudeResponse(text="Continuing!", session_id="sess-1")
-
-    with (
-        patch("core.bot._config", {"telegram": {"allowed_users": [111]}}),
-        patch("core.bot._sessions") as mock_sm,
-        patch("core.bot.send_message", new_callable=AsyncMock, return_value=mock_response) as mock_send,
-        patch("core.bot._project_dir", "/tmp/bot"),
-    ):
-        mock_sm.get_session.return_value = "sess-1"
-        await handle_message(mock_update, mock_context)
-
-    mock_send.assert_called_once_with("Hello bot", session_id="sess-1", project_dir="/tmp/bot")
+    mock_router.enqueue.assert_called_once()
+    call_args = mock_router.enqueue.call_args
+    assert call_args[0][0] == 111  # chat_id
+    assert call_args[0][1] == "Hello bot"  # message text
 
 
 @pytest.mark.asyncio
@@ -84,3 +76,38 @@ async def test_handle_new_clears_session(mock_update, mock_context):
 
     mock_sm.clear_session.assert_called_once_with(111)
     mock_update.message.reply_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_facts_shows_content(mock_update, mock_context, tmp_path):
+    facts = tmp_path / "memory" / "facts.md"
+    facts.parent.mkdir(parents=True)
+    facts.write_text("Name: Alice\nTimezone: EST")
+
+    with (
+        patch("core.bot._config", {"telegram": {"allowed_users": [111]}}),
+        patch("core.bot._project_dir", str(tmp_path)),
+    ):
+        await handle_facts(mock_update, mock_context)
+
+    mock_update.message.reply_text.assert_called_once_with("Name: Alice\nTimezone: EST")
+
+
+@pytest.mark.asyncio
+async def test_handle_today_no_log(mock_update, mock_context, tmp_path):
+    with (
+        patch("core.bot._config", {"telegram": {"allowed_users": [111]}}),
+        patch("core.bot._project_dir", str(tmp_path)),
+    ):
+        await handle_today(mock_update, mock_context)
+
+    assert "no log" in mock_update.message.reply_text.call_args[0][0].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_help(mock_update, mock_context):
+    await handle_help(mock_update, mock_context)
+    msg = mock_update.message.reply_text.call_args[0][0]
+    assert "/new" in msg
+    assert "/facts" in msg
+    assert "/today" in msg

@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 
 from telegram import Update
-from telegram.constants import ChatAction
+from telegram.constants import ChatAction, ParseMode
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -12,6 +12,9 @@ from telegram.ext import (
 
 from core.bridge import send_message, ClaudeResponse
 from core.config import load_config
+from core.formatter import format_for_telegram, plain_text_fallback
+from core.media import process_voice, process_photo, process_document, cleanup_old_files
+from core.queue import MessageRouter, ProcessLock
 from core.session import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -20,10 +23,46 @@ logger = logging.getLogger(__name__)
 _config: dict = {}
 _sessions: SessionManager | None = None
 _project_dir: str = "."
+_router: MessageRouter | None = None
 
 
 def is_authorized(user_id: int, allowed: list[int]) -> bool:
     return user_id in allowed
+
+
+async def _send_response(chat_id: int, text: str, context) -> None:
+    """Send a formatted response, falling back to plain text if formatting fails."""
+    chunks = format_for_telegram(text)
+    for chunk in chunks:
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=chunk,
+                parse_mode=ParseMode.MARKDOWN_V2,
+            )
+        except Exception:
+            # Fall back to plain text if MarkdownV2 parsing fails
+            plain_chunks = plain_text_fallback(text)
+            for plain in plain_chunks:
+                await context.bot.send_message(chat_id=chat_id, text=plain)
+            break
+
+
+async def _process_and_respond(chat_id: int, text: str, context) -> None:
+    """Process a message through Claude and send the response."""
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+
+    session_id = _sessions.get_session(chat_id)
+    response = await send_message(
+        text,
+        session_id=session_id,
+        project_dir=_project_dir,
+    )
+
+    if response.session_id:
+        _sessions.set_session(chat_id, response.session_id)
+
+    await _send_response(chat_id, response.text, context)
 
 
 async def handle_message(update: Update, context) -> None:
@@ -34,19 +73,64 @@ async def handle_message(update: Update, context) -> None:
         await update.message.reply_text("You are not authorized to use this bot.")
         return
 
-    await update.message.chat.send_action(ChatAction.TYPING)
+    async def handler(cid: int, text: str):
+        await _process_and_respond(cid, text, context)
 
-    session_id = _sessions.get_session(chat_id)
-    response = await send_message(
-        update.message.text,
-        session_id=session_id,
-        project_dir=_project_dir,
+    await _router.enqueue(chat_id, update.message.text, handler)
+
+
+async def handle_voice(update: Update, context) -> None:
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    if not is_authorized(user_id, _config["telegram"]["allowed_users"]):
+        await update.message.reply_text("You are not authorized to use this bot.")
+        return
+
+    await update.message.chat.send_action(ChatAction.TYPING)
+    transcript = await process_voice(update.message.voice)
+
+    async def handler(cid: int, text: str):
+        await _process_and_respond(cid, text, context)
+
+    await _router.enqueue(chat_id, f"[Voice message]: {transcript}", handler)
+
+
+async def handle_photo(update: Update, context) -> None:
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    if not is_authorized(user_id, _config["telegram"]["allowed_users"]):
+        await update.message.reply_text("You are not authorized to use this bot.")
+        return
+
+    await update.message.chat.send_action(ChatAction.TYPING)
+    photo = update.message.photo[-1]  # Highest resolution
+    prompt, path = await process_photo(photo, caption=update.message.caption or "")
+
+    async def handler(cid: int, text: str):
+        await _process_and_respond(cid, text, context)
+
+    await _router.enqueue(chat_id, prompt, handler)
+
+
+async def handle_document(update: Update, context) -> None:
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    if not is_authorized(user_id, _config["telegram"]["allowed_users"]):
+        await update.message.reply_text("You are not authorized to use this bot.")
+        return
+
+    await update.message.chat.send_action(ChatAction.TYPING)
+    prompt, path = await process_document(
+        update.message.document, caption=update.message.caption or ""
     )
 
-    if response.session_id:
-        _sessions.set_session(chat_id, response.session_id)
+    async def handler(cid: int, text: str):
+        await _process_and_respond(cid, text, context)
 
-    await update.message.reply_text(response.text)
+    await _router.enqueue(chat_id, prompt, handler)
 
 
 async def handle_new(update: Update, context) -> None:
@@ -74,27 +158,76 @@ async def handle_status(update: Update, context) -> None:
     await update.message.reply_text(f"Status: {status}\nSession: {session_id or 'none'}")
 
 
+async def handle_facts(update: Update, context) -> None:
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id, _config["telegram"]["allowed_users"]):
+        await update.message.reply_text("You are not authorized to use this bot.")
+        return
+
+    facts_path = Path(_project_dir) / "memory" / "facts.md"
+    if facts_path.exists():
+        content = facts_path.read_text().strip()
+        await update.message.reply_text(content or "No facts saved yet.")
+    else:
+        await update.message.reply_text("No facts file found.")
+
+
+async def handle_today(update: Update, context) -> None:
+    user_id = update.effective_user.id
+
+    if not is_authorized(user_id, _config["telegram"]["allowed_users"]):
+        await update.message.reply_text("You are not authorized to use this bot.")
+        return
+
+    from datetime import date
+    today_path = Path(_project_dir) / "memory" / "daily" / f"{date.today()}.md"
+    if today_path.exists():
+        content = today_path.read_text().strip()
+        await update.message.reply_text(content or "Nothing logged today yet.")
+    else:
+        await update.message.reply_text("No log for today yet.")
+
+
 async def handle_help(update: Update, context) -> None:
     await update.message.reply_text(
         "/new — Start a new conversation\n"
         "/status — Session info\n"
+        "/facts — Show saved facts about you\n"
+        "/today — Show today's daily log\n"
         "/help — Show this message"
     )
 
 
 def main():
-    global _config, _sessions, _project_dir
+    global _config, _sessions, _project_dir, _router
 
     _project_dir = str(Path(__file__).resolve().parent.parent)
     _config = load_config()
     _sessions = SessionManager(Path(_project_dir) / "sessions.db")
 
+    lock = ProcessLock(Path(_project_dir) / ".claude_lock")
+    _router = MessageRouter(process_lock=lock)
+
+    # Ensure memory directories exist
+    for subdir in ["daily", "chats"]:
+        (Path(_project_dir) / "memory" / subdir).mkdir(parents=True, exist_ok=True)
+
     app = Application.builder().token(_config["telegram"]["token"]).build()
+
+    # Commands
     app.add_handler(CommandHandler("new", handle_new))
     app.add_handler(CommandHandler("status", handle_status))
+    app.add_handler(CommandHandler("facts", handle_facts))
+    app.add_handler(CommandHandler("today", handle_today))
     app.add_handler(CommandHandler("help", handle_help))
     app.add_handler(CommandHandler("start", handle_help))
+
+    # Message types
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
 
     logger.info("Bot starting...")
     app.run_polling()
