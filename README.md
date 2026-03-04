@@ -40,6 +40,7 @@ Message [@userinfobot](https://t.me/userinfobot) on Telegram — it will reply w
 
 - Python 3.11+
 - Claude Code CLI (`claude`) installed and authenticated
+- Node.js (for Playwright MCP — web browsing)
 - A Telegram bot token
 
 ## Deploy on Hostinger VPS
