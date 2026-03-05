@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # 🦞 lobster-bot installer
-# Usage: curl -sSL https://raw.githubusercontent.com/aflekkas/lobster-bot/main/deploy/install.sh | bash
+# Usage: curl -sSL https://raw.githubusercontent.com/agent-lab-skool/lobster-bot/main/deploy/install.sh | bash
 
 REPO_DIR="${LOBSTERBOT_DIR:-$HOME/lobster-bot}"
 
@@ -35,7 +35,7 @@ if [ -d "$REPO_DIR" ]; then
     cd "$REPO_DIR" && git pull --ff-only
 else
     echo "Cloning lobster-bot..."
-    git clone https://github.com/aflekkas/lobster-bot.git "$REPO_DIR"
+    git clone https://github.com/agent-lab-skool/lobster-bot.git "$REPO_DIR"
     cd "$REPO_DIR"
 fi
 

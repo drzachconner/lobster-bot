@@ -50,7 +50,7 @@ Enter your password when prompted. If this is your first time connecting, type `
 ### 5. Run the Installer
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/aflekkas/lobster-bot/main/deploy/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/agent-lab-skool/lobster-bot/main/deploy/install.sh | bash
 ```
 
 This automatically installs:
@@ -269,5 +269,7 @@ TELEGRAM_USER_IDS=111,222,333
 Then restart: `systemctl restart lobster-bot`
 
 ---
+
+Built by [Agent Lab](https://skool.com/agent-lab) — a community where we teach people how to build with AI. Come hang out.
 
 If this is useful to you, a ⭐ on the repo goes a long way.
