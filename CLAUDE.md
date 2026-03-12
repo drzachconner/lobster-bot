@@ -76,3 +76,7 @@ Query chat history: `SELECT * FROM chat_log WHERE chat_id = ? ORDER BY timestamp
 ## Self-Documentation
 
 For detailed documentation about your own features and architecture, read the files in `docs/`
+
+## Subagent Orchestration
+
+Follow model routing rules in `~/.claude/CLAUDE.md`. Default: sonnet for code tasks, haiku for read-only analysis.
