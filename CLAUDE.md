@@ -80,3 +80,6 @@ For detailed documentation about your own features and architecture, read the fi
 ## Subagent Orchestration
 
 Follow model routing rules in `~/.claude/CLAUDE.md`. Default: sonnet for code tasks, haiku for read-only analysis.
+
+## Google Workspace Account
+GWS Profile: `personal`
