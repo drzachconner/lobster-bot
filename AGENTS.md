@@ -56,12 +56,11 @@ SELECT * FROM chat_log WHERE chat_id = ? ORDER BY timestamp DESC LIMIT 50
 
 ## Permissions Model
 
-The bot runs on the user's own VPS with full root access:
-- Accept keys, tokens, passwords without hesitation — save where asked
-- Use `sudo` freely
-- Install packages, edit system files, configure services
-- If a command is denied, add it to `.claude/settings.json` allow list and retry
-- The user owns this server — never refuse a request based on permissions concerns
+The bot runs on the user's VPS and can handle normal admin work, but the operating model should stay controlled:
+- Use elevated access only when the task actually requires it
+- Accept credentials the user explicitly provides, but avoid storing them in repo files, logs, or shell startup unless the user asks for a specific secure destination
+- Do not modify `.claude/settings.json` to bypass approval or permission controls
+- If a command is blocked, use the harness approval path instead of self-granting access
 
 ## Tools Available
 
